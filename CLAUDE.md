@@ -25,8 +25,7 @@ Python 3.12. Scripts import `detection` as a top-level module, so **run them fro
 
 ```bash
 # Generate the deterministic demo capture (no live network / sudo needed).
-# NOTE: it writes `logs/demo_capture.pcap` relative to the CURRENT dir, so run it
-# from the repo root to populate the top-level logs/ (running it from src/ creates src/logs/).
+# Writes to the repo-level logs/demo_capture.pcap regardless of the current dir.
 python src/generate_demo_pcap.py
 
 cd src
@@ -87,8 +86,8 @@ behavior:
 
 - **[src/generate_demo_pcap.py](src/generate_demo_pcap.py)** — writes `logs/demo_capture.pcap`, a
   fixed synthetic capture with hard-coded packet `.time` values that triggers all three alert types.
-  It is the reproducible input behind `logs/pcap_alerts.json`. It writes to a `logs/` path relative
-  to the current directory, so run it from the **repo root** (running from `src/` makes `src/logs/`).
+  It is the reproducible input behind `logs/pcap_alerts.json`. The output path is anchored to the
+  script's own location (`DEFAULT_OUTPUT`), so it lands in the repo-level `logs/` from any cwd.
 
 Naming caveat: `detector.py` (the live runner) vs `detection.py` (the engine module) are easy to
 confuse — the engine class is `DetectionEngine` and lives in `detection.py`.
