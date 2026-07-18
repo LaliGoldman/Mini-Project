@@ -147,8 +147,10 @@ class DetectionEngine:
                     timestamp=event_time,
                 )
 
-        if packet.haslayer(IP) and packet.haslayer(DNS):
+        if packet.haslayer(IP) and packet.haslayer(DNS) and packet[DNS].qr == 0:
             src_ip = packet[IP].src
+            if not is_private_ip(src_ip):
+                return
             dns_count = self.state.add_dns_event(src_ip, event_time)
             if dns_count >= self.dns_threshold and self.can_alert(("dns", src_ip), event_time):
                 self.logger.log(
