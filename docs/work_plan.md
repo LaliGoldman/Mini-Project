@@ -66,20 +66,23 @@ Python 3.10+, scapy, stdlib (argparse, collections, datetime, json, pathlib).
 
 ### Phase 1 — Correctness
 
-- [ ] DNS: filter `DNS.qr == 0` (queries only) — `src/detection.py:150`
-- [ ] DNS: add private-source filter
-- [ ] Live: try/finally around sniff+flush — `src/detector.py:27-33`
+- [x] DNS: filter `DNS.qr == 0` (queries only) — `src/detection.py:150`
+- [x] DNS: add private-source filter
+- [x] Live: try/finally around sniff+flush — `src/detector.py:27-33`
 
 ### Phase 2 — Reproducibility
 
 - [x] Demo pcap generator + capture — `src/generate_demo_pcap.py`, `logs/demo_capture.pcap`
-- [ ] Remove stray `logs/alerts.json` (not part of submission log set)
+- [x] Remove stray `logs/alerts.json` (not part of submission log set)
 
 ### Phase 3 — Tests
 
-- [ ] pytest: 3 alert types fire on crafted packets
-- [ ] pytest: clean traffic → no alerts
-- [ ] pytest → `requirements.txt`
+- [x] pytest: 3 alert types fire on crafted packets — `tests/test_detection.py`
+- [x] pytest: clean traffic → no alerts — `tests/test_detection.py`
+- [x] pytest → `requirements.txt`
+- [x] Detection edge cases: cooldown, window trimming, private-source filters, gratuitous ARP skip, flush schema
+- [x] `summarize_logs`: counts by type/source, CSV exports, load errors — `tests/test_summarize_logs.py`
+- [x] End-to-end: demo pcap → `analyze_pcap` → exact alert set — `tests/test_pcap_pipeline.py`
 
 ### Phase 4 — Polish
 
