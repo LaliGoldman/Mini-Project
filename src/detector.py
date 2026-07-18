@@ -24,14 +24,16 @@ def run(
     )
 
     print(f"[*] Starting capture on interface={interface}, duration={duration}s")
-    sniff(
-        iface=interface,
-        prn=engine.process_packet,
-        store=False,
-        timeout=duration,
-    )
-    engine.flush()
-    print(f"[*] Capture complete. Alerts written to {output}")
+    try:
+        sniff(
+            iface=interface,
+            prn=engine.process_packet,
+            store=False,
+            timeout=duration,
+        )
+    finally:
+        engine.flush()
+        print(f"[*] Capture complete. Alerts written to {output}")
 
 
 def parse_args() -> argparse.Namespace:
