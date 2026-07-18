@@ -1,0 +1,4 @@
+source_file,alert_type,count
+logs/run_a.json,dns_burst_anomaly,3
+logs/run_b.json,dns_burst_anomaly,3
+logs/run_after_tuning.json,dns_burst_anomaly,4
