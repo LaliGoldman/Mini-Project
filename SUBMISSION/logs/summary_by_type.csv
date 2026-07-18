@@ -1,0 +1,7 @@
+source_file,alert_type,count
+logs/run_a.json,dns_burst_anomaly,3
+logs/run_b.json,dns_burst_anomaly,3
+logs/run_after_tuning.json,dns_burst_anomaly,4
+logs/pcap_alerts.json,dns_burst_anomaly,1
+logs/pcap_alerts.json,possible_arp_spoofing,1
+logs/pcap_alerts.json,possible_port_scan,1

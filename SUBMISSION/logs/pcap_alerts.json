@@ -1,0 +1,29 @@
+[
+  {
+    "timestamp": "2023-11-14T22:13:21.800000+00:00",
+    "type": "dns_burst_anomaly",
+    "details": {
+      "source_ip": "192.168.8.50",
+      "requests_in_window": 10,
+      "window_seconds": 20
+    }
+  },
+  {
+    "timestamp": "2023-11-14T22:13:30.400000+00:00",
+    "type": "possible_port_scan",
+    "details": {
+      "source_ip": "192.168.8.60",
+      "unique_ports_in_window": 8,
+      "window_seconds": 20
+    }
+  },
+  {
+    "timestamp": "2023-11-14T22:13:41+00:00",
+    "type": "possible_arp_spoofing",
+    "details": {
+      "ip": "192.168.8.10",
+      "known_mac": "aa:bb:cc:dd:ee:01",
+      "observed_mac": "aa:bb:cc:dd:ee:02"
+    }
+  }
+]
