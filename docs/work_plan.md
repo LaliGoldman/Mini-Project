@@ -94,3 +94,22 @@ Python 3.10+, scapy, stdlib (argparse, collections, datetime, json, pathlib).
 - [x] Real milestones / scenarios / challenges (from submitted plan)
 - [ ] Convert FINAL_REPORT.md → PDF/Word for upload
 - [ ] Add signed originality + AI-use declaration forms (from Moodle)
+
+### Phase 6 — Visual report (HTML)
+
+Goal: give the headless monitor a demo-able face. A self-contained HTML report,
+generated from our own alert JSON, that visualizes each detection **with the
+evidence that triggered it** — not a generic metrics dashboard.
+
+- [x] `src/generate_report.py` — scapy-free, convention-matched CLI
+      (`from __future__`, type hints, `argparse`, `run()/parse_args()/__main__`);
+      reads one or more alert JSON logs, writes one self-contained
+      `logs/report.html` (inline CSS + inline SVG, no external deps / server / sudo)
+- [x] Summary tiles: total alerts, counts by type, counts by source IP
+- [x] Per-type "why it fired" cards from `details`:
+      port scan (`unique_ports_in_window` vs threshold),
+      DNS burst (`requests_in_window` vs threshold),
+      ARP conflict (`known_mac → observed_mac`)
+- [x] Chronological alert timeline
+- [x] pytest: report generates from a fixture log; asserts key facts appear in HTML
+- [x] Wire into README run section; demo-able offline (open in browser / publish as Artifact)

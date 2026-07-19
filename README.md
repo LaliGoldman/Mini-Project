@@ -57,6 +57,16 @@ python summarize_logs.py ../logs/run_a.json ../logs/run_b.json \
     --csv ../logs/alerts_export.csv --summary-csv ../logs/summary_by_type.csv
 ```
 
+### Render alert logs as an HTML report
+
+`generate_report.py` generates a self-contained HTML report from alert JSON logs, with summary
+tiles, per-detection context cards, and a chronological timeline.
+
+```bash
+cd src
+python generate_report.py ../logs/pcap_alerts.json --output ../logs/report.html
+```
+
 ## Detection tuning
 
 Both `detector.py` and `analyze_pcap.py` accept the same tuning flags:

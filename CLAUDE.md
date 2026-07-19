@@ -39,6 +39,9 @@ sudo python detector.py --interface eth0 --duration 120 --output ../logs/alerts.
 # Summarize / compare one or more alert JSON logs, export CSV:
 python summarize_logs.py ../logs/run_a.json ../logs/run_b.json \
     --csv ../logs/alerts_export.csv --summary-csv ../logs/summary_by_type.csv
+
+# Render alert logs as a self-contained HTML report (defaults: demo log -> logs/report.html):
+python generate_report.py
 ```
 
 `generate_demo_pcap.py` builds a fixed set of packets (20 DNS from one private source, a 24-port
@@ -88,6 +91,12 @@ behavior:
   fixed synthetic capture with hard-coded packet `.time` values that triggers all three alert types.
   It is the reproducible input behind `logs/pcap_alerts.json`. The output path is anchored to the
   script's own location (`DEFAULT_OUTPUT`), so it lands in the repo-level `logs/` from any cwd.
+
+- **[src/generate_report.py](src/generate_report.py)** — standalone HTML report generator, no
+  scapy dependency. Reads alert JSON logs (reusing `load_alerts`/`source_key` from
+  `summarize_logs.py`) and writes one self-contained `logs/report.html` (inline CSS/SVG, no
+  external references): summary tiles, per-detection "why it fired" cards, and a chronological
+  timeline. Default input is `logs/pcap_alerts.json`; paths are anchored to the script location.
 
 Naming caveat: `detector.py` (the live runner) vs `detection.py` (the engine module) are easy to
 confuse — the engine class is `DetectionEngine` and lives in `detection.py`.
