@@ -104,5 +104,7 @@ engine emits at most one alert per `(type, source)` per window.
 - [src/detector.py](src/detector.py) — live-capture front-end.
 - [src/analyze_pcap.py](src/analyze_pcap.py) — offline PCAP front-end.
 - [src/summarize_logs.py](src/summarize_logs.py) — reporting / CSV export tool.
+- [src/generate_report.py](src/generate_report.py) — self-contained HTML report generator.
+- [src/generate_demo_pcap.py](src/generate_demo_pcap.py) — deterministic demo capture generator.
 - [logs/](logs/) — example alert logs and CSV exports.
 - [docs/](docs/) — assignment brief and work plan.

@@ -146,6 +146,27 @@ def test_none_details_does_not_crash() -> None:
     assert "possible_arp_spoofing" in page
 
 
+def test_non_string_type_does_not_crash() -> None:
+    bad = [
+        {"timestamp": "2026-07-18T12:00:00+00:00", "type": None, "details": {"source_ip": "10.0.0.1"}},
+        {"timestamp": "2026-07-18T12:00:01+00:00", "type": 5, "details": {}},
+        SAMPLE_ALERTS[0],
+    ]
+    page = build_report(bad, ["bad.json"])
+    assert "unknown" in page
+    assert "192.168.8.60" in page
+
+
+def test_non_dict_details_does_not_crash() -> None:
+    bad = [
+        {"timestamp": "2026-07-18T12:00:00+00:00", "type": "possible_port_scan", "details": "oops"},
+        {"timestamp": "2026-07-18T12:00:01+00:00", "type": "dns_burst_anomaly", "details": [1, 2]},
+    ]
+    page = build_report(bad, ["bad.json"])
+    assert "possible_port_scan" in page
+    assert "dns_burst_anomaly" in page
+
+
 def test_run_merges_logs_and_writes_html(tmp_path: Path) -> None:
     from generate_report import run
 

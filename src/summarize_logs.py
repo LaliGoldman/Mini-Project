@@ -18,7 +18,9 @@ def load_alerts(path: Path) -> List[dict]:
 
 
 def source_key(alert: dict) -> str:
-    details = alert.get("details") or {}
+    details = alert.get("details")
+    if not isinstance(details, dict):
+        details = {}
     return str(details.get("source_ip") or details.get("ip") or "unknown")
 
 

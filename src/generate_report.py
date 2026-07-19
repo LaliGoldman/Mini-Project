@@ -29,6 +29,15 @@ def esc(value: object) -> str:
     return html.escape(str(value))
 
 
+def alert_type_key(alert: dict) -> str:
+    return str(alert.get("type") or "unknown")
+
+
+def alert_details(alert: dict) -> dict:
+    details = alert.get("details")
+    return details if isinstance(details, dict) else {}
+
+
 BAR_WIDTH = 260
 BAR_HEIGHT = 16
 
@@ -39,17 +48,17 @@ METRIC_KEYS = {
 
 
 def metric_value(alert: dict) -> int:
-    key = METRIC_KEYS.get(alert.get("type", ""))
+    key = METRIC_KEYS.get(alert_type_key(alert))
     if key is None:
         return 0
     try:
-        return int((alert.get("details") or {}).get(key, 0) or 0)
+        return int(alert_details(alert).get(key, 0) or 0)
     except (TypeError, ValueError):
         return 0
 
 
 def render_bar(value: float, scale: float) -> str:
-    fraction = min(value / scale, 1.0) if scale > 0 else 0.0
+    fraction = max(0.0, min(value / scale, 1.0)) if scale > 0 else 0.0
     fill = round(BAR_WIDTH * fraction)
     return (
         f'<svg width="{BAR_WIDTH}" height="{BAR_HEIGHT}" role="img">'
@@ -60,8 +69,8 @@ def render_bar(value: float, scale: float) -> str:
 
 
 def render_card(alert: dict, scale: int) -> str:
-    alert_type = alert.get("type", "unknown")
-    details = alert.get("details") or {}
+    alert_type = alert_type_key(alert)
+    details = alert_details(alert)
     timestamp = esc(alert.get("timestamp", "?"))
     if alert_type == "possible_port_scan":
         value = metric_value(alert)
@@ -100,7 +109,7 @@ def render_cards(alerts: List[dict]) -> str:
         return ""
     by_type: dict[str, List[dict]] = {}
     for alert in alerts:
-        by_type.setdefault(alert.get("type", "unknown"), []).append(alert)
+        by_type.setdefault(alert_type_key(alert), []).append(alert)
     sections = []
     for alert_type, group in sorted(by_type.items()):
         scale = max((metric_value(alert) for alert in group), default=0)
@@ -112,8 +121,8 @@ def render_cards(alerts: List[dict]) -> str:
 
 
 def evidence_summary(alert: dict) -> str:
-    details = alert.get("details") or {}
-    alert_type = alert.get("type", "unknown")
+    details = alert_details(alert)
+    alert_type = alert_type_key(alert)
     if alert_type == "possible_port_scan":
         return (
             f"{details.get('unique_ports_in_window', '?')} unique ports "
@@ -133,7 +142,7 @@ def evidence_summary(alert: dict) -> str:
 
 
 def render_summary(alerts: List[dict]) -> str:
-    by_type = Counter(alert.get("type", "unknown") for alert in alerts)
+    by_type = Counter(alert_type_key(alert) for alert in alerts)
     by_source = Counter(source_key(alert) for alert in alerts)
     type_items = "".join(
         f"<li><code>{esc(alert_type)}</code>: {count}</li>"
@@ -157,7 +166,7 @@ def render_timeline(alerts: List[dict]) -> str:
         return ""
     rows = "".join(
         f"<tr><td>{esc(alert.get('timestamp', '?'))}</td>"
-        f"<td><code>{esc(alert.get('type', 'unknown'))}</code></td>"
+        f"<td><code>{esc(alert_type_key(alert))}</code></td>"
         f"<td>{esc(source_key(alert))}</td>"
         f"<td>{esc(evidence_summary(alert))}</td></tr>"
         for alert in sorted(alerts, key=lambda alert: str(alert.get("timestamp", "")))

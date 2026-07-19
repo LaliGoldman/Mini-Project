@@ -68,7 +68,8 @@ what is present, fall back to a generic card.
 Plain Python string building (f-strings / small helper functions per section).
 No templating dependency. HTML-escape every value pulled from the log
 (`html.escape`) so a crafted log can't break the page. Bars are inline `<svg>`
-with width proportional to value; a marker line for the trigger threshold.
+scaled against the group's max value (no marker line); card copy states the
+value fired at or above the threshold.
 
 ## Error handling
 
