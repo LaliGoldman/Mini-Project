@@ -94,3 +94,42 @@ def test_unknown_type_and_missing_keys_render_generic() -> None:
     page = build_report(weird, ["weird.json"])
     assert "novel_thing" in page
     assert "foo" in page
+
+
+def test_cards_show_why_it_fired() -> None:
+    page = build_report(SAMPLE_ALERTS, ["run.json"])
+    assert "<svg" in page  # evidence bars for scan + dns cards
+    assert "distinct destination ports" in page
+    assert "DNS requests" in page
+    assert "IP&harr;MAC conflict" in page
+
+
+def test_bar_scales_within_type_group() -> None:
+    two_scans = [
+        {
+            "timestamp": "2026-07-18T12:00:00+00:00",
+            "type": "possible_port_scan",
+            "details": {"source_ip": "10.0.0.1", "unique_ports_in_window": 5, "window_seconds": 20},
+        },
+        {
+            "timestamp": "2026-07-18T12:00:05+00:00",
+            "type": "possible_port_scan",
+            "details": {"source_ip": "10.0.0.2", "unique_ports_in_window": 10, "window_seconds": 20},
+        },
+    ]
+    page = build_report(two_scans, ["run.json"])
+    # larger value renders a full-width fill (260), smaller renders half (130)
+    assert 'width="260" height="16" fill="#c0392b"' in page
+    assert 'width="130" height="16" fill="#c0392b"' in page
+
+
+def test_non_numeric_metric_does_not_crash() -> None:
+    bad = [
+        {
+            "timestamp": "2026-07-18T12:00:00+00:00",
+            "type": "possible_port_scan",
+            "details": {"source_ip": "10.0.0.1", "unique_ports_in_window": "not-a-number"},
+        }
+    ]
+    page = build_report(bad, ["bad.json"])
+    assert "10.0.0.1" in page

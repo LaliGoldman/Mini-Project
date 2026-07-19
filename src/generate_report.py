@@ -17,11 +17,96 @@ table{border-collapse:collapse;width:100%}
 th,td{border-bottom:1px solid #ddd;padding:.4rem .6rem;text-align:left;font-size:.9rem}
 .empty{color:#666;font-style:italic}
 code{background:#f4f4f6;padding:0 .25rem;border-radius:4px}
+.cards{display:flex;gap:1rem;flex-wrap:wrap}
+.card{border:1px solid #ddd;border-left:4px solid #c0392b;border-radius:8px;padding:1rem;flex:1;min-width:16rem}
+.card .ts{color:#666;font-size:.85rem}
 """
 
 
 def esc(value: object) -> str:
     return html.escape(str(value))
+
+
+BAR_WIDTH = 260
+BAR_HEIGHT = 16
+
+METRIC_KEYS = {
+    "possible_port_scan": "unique_ports_in_window",
+    "dns_burst_anomaly": "requests_in_window",
+}
+
+
+def metric_value(alert: dict) -> int:
+    key = METRIC_KEYS.get(alert.get("type", ""))
+    if key is None:
+        return 0
+    try:
+        return int(alert.get("details", {}).get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def render_bar(value: float, scale: float) -> str:
+    fraction = min(value / scale, 1.0) if scale > 0 else 0.0
+    fill = round(BAR_WIDTH * fraction)
+    return (
+        f'<svg width="{BAR_WIDTH}" height="{BAR_HEIGHT}" role="img">'
+        f'<rect width="{BAR_WIDTH}" height="{BAR_HEIGHT}" fill="#e8e8ee"/>'
+        f'<rect width="{fill}" height="{BAR_HEIGHT}" fill="#c0392b"/>'
+        "</svg>"
+    )
+
+
+def render_card(alert: dict, scale: int) -> str:
+    alert_type = alert.get("type", "unknown")
+    details = alert.get("details", {})
+    timestamp = esc(alert.get("timestamp", "?"))
+    if alert_type == "possible_port_scan":
+        value = metric_value(alert)
+        body = (
+            f"<p><strong>{esc(source_key(alert))}</strong> hit <strong>{value}</strong> "
+            f"distinct destination ports within {esc(details.get('window_seconds', '?'))}s "
+            "&mdash; at or above the scan threshold.</p>" + render_bar(value, scale)
+        )
+    elif alert_type == "dns_burst_anomaly":
+        value = metric_value(alert)
+        body = (
+            f"<p><strong>{esc(source_key(alert))}</strong> sent <strong>{value}</strong> "
+            f"DNS requests within {esc(details.get('window_seconds', '?'))}s "
+            "&mdash; at or above the burst threshold.</p>" + render_bar(value, scale)
+        )
+    elif alert_type == "possible_arp_spoofing":
+        body = (
+            f"<p><strong>{esc(details.get('ip', '?'))}</strong> was known as "
+            f"<code>{esc(details.get('known_mac', '?'))}</code> but was claimed by "
+            f"<code>{esc(details.get('observed_mac', '?'))}</code> "
+            "&mdash; IP&harr;MAC conflict.</p>"
+        )
+    else:
+        items = "".join(
+            f"<li><code>{esc(key)}</code>: {esc(value)}</li>" for key, value in details.items()
+        )
+        body = f"<ul>{items or '<li>no details recorded</li>'}</ul>"
+    return (
+        f'<article class="card"><h3>{esc(alert_type)}</h3>'
+        f'<p class="ts">{timestamp}</p>{body}</article>'
+    )
+
+
+def render_cards(alerts: List[dict]) -> str:
+    if not alerts:
+        return ""
+    by_type: dict[str, List[dict]] = {}
+    for alert in alerts:
+        by_type.setdefault(alert.get("type", "unknown"), []).append(alert)
+    sections = []
+    for alert_type, group in sorted(by_type.items()):
+        scale = max((metric_value(alert) for alert in group), default=0)
+        cards = "".join(render_card(alert, scale) for alert in group)
+        sections.append(
+            f'<section><h2>{esc(alert_type)}</h2><div class="cards">{cards}</div></section>'
+        )
+    return "\n".join(sections)
 
 
 def evidence_summary(alert: dict) -> str:
@@ -85,7 +170,7 @@ def render_timeline(alerts: List[dict]) -> str:
 def build_report(alerts: List[dict], source_names: List[str]) -> str:
     sources = ", ".join(esc(name) for name in source_names)
     if alerts:
-        body = render_summary(alerts) + render_timeline(alerts)
+        body = render_summary(alerts) + render_cards(alerts) + render_timeline(alerts)
     else:
         body = render_summary(alerts) + '<p class="empty">No alerts in the provided logs.</p>'
     return (
