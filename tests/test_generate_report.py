@@ -144,3 +144,20 @@ def test_none_details_does_not_crash() -> None:
     page = build_report(bad, ["bad.json"])
     assert "possible_port_scan" in page
     assert "possible_arp_spoofing" in page
+
+
+def test_run_merges_logs_and_writes_html(tmp_path: Path) -> None:
+    from generate_report import run
+
+    log_a = tmp_path / "a.json"
+    log_b = tmp_path / "b.json"
+    log_a.write_text(json.dumps(SAMPLE_ALERTS[:1]), encoding="utf-8")
+    log_b.write_text(json.dumps(SAMPLE_ALERTS[1:]), encoding="utf-8")
+    output = tmp_path / "out" / "report.html"
+
+    run([log_a, log_b], output)
+
+    page = output.read_text(encoding="utf-8")
+    assert page.startswith("<!DOCTYPE html>")
+    assert "a.json" in page and "b.json" in page
+    assert ">3<" in page  # alerts merged across files

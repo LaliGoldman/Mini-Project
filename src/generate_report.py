@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import html
 from collections import Counter
+from pathlib import Path
 from typing import List
 
-from summarize_logs import source_key
+from summarize_logs import load_alerts, source_key
 
 CSS = """
 body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem;color:#222}
@@ -182,3 +184,42 @@ def build_report(alerts: List[dict], source_names: List[str]) -> str:
         f"<p>Generated from: {sources}</p></header>\n"
         f"{body}\n</body>\n</html>\n"
     )
+
+
+DEFAULT_INPUT = Path(__file__).resolve().parent.parent / "logs" / "pcap_alerts.json"
+DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "logs" / "report.html"
+
+
+def run(paths: List[Path], output: Path) -> None:
+    alerts: List[dict] = []
+    for path in paths:
+        alerts.extend(load_alerts(path))
+    report = build_report(alerts, [path.name for path in paths])
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(report, encoding="utf-8")
+    print(f"[*] Report written to {output} ({len(alerts)} alerts)")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Render alert JSON logs as a self-contained HTML report"
+    )
+    parser.add_argument(
+        "logs",
+        nargs="*",
+        type=Path,
+        default=[DEFAULT_INPUT],
+        help="Alert JSON files (default: logs/pcap_alerts.json)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help="Output HTML path (default: logs/report.html)",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    run(paths=args.logs, output=args.output)
