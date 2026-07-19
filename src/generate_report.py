@@ -41,7 +41,7 @@ def metric_value(alert: dict) -> int:
     if key is None:
         return 0
     try:
-        return int(alert.get("details", {}).get(key, 0) or 0)
+        return int((alert.get("details") or {}).get(key, 0) or 0)
     except (TypeError, ValueError):
         return 0
 
@@ -59,7 +59,7 @@ def render_bar(value: float, scale: float) -> str:
 
 def render_card(alert: dict, scale: int) -> str:
     alert_type = alert.get("type", "unknown")
-    details = alert.get("details", {})
+    details = alert.get("details") or {}
     timestamp = esc(alert.get("timestamp", "?"))
     if alert_type == "possible_port_scan":
         value = metric_value(alert)
@@ -110,7 +110,7 @@ def render_cards(alerts: List[dict]) -> str:
 
 
 def evidence_summary(alert: dict) -> str:
-    details = alert.get("details", {})
+    details = alert.get("details") or {}
     alert_type = alert.get("type", "unknown")
     if alert_type == "possible_port_scan":
         return (

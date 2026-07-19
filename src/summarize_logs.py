@@ -18,7 +18,7 @@ def load_alerts(path: Path) -> List[dict]:
 
 
 def source_key(alert: dict) -> str:
-    details = alert.get("details", {})
+    details = alert.get("details") or {}
     return str(details.get("source_ip") or details.get("ip") or "unknown")
 
 

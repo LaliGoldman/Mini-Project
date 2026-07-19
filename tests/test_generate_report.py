@@ -133,3 +133,14 @@ def test_non_numeric_metric_does_not_crash() -> None:
     ]
     page = build_report(bad, ["bad.json"])
     assert "10.0.0.1" in page
+    assert "hit <strong>0</strong>" in page
+
+
+def test_none_details_does_not_crash() -> None:
+    bad = [
+        {"timestamp": "2026-07-18T12:00:00+00:00", "type": "possible_port_scan", "details": None},
+        {"timestamp": "2026-07-18T12:00:01+00:00", "type": "possible_arp_spoofing", "details": None},
+    ]
+    page = build_report(bad, ["bad.json"])
+    assert "possible_port_scan" in page
+    assert "possible_arp_spoofing" in page
