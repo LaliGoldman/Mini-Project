@@ -32,7 +32,10 @@ The system is implemented in Python using Scapy. It includes the following main 
 | `detector.py` | Live sniffing on a selected network interface |
 | `analyze_pcap.py` | Offline analysis of a saved PCAP file |
 | `summarize_logs.py` | Log summary, run comparison, and CSV export |
+| `generate_report.py` | Self-contained HTML report (summary tiles, evidence cards, timeline) |
+| `generate_demo_pcap.py` | Deterministic demo capture that triggers all three alert types |
 | `detection.py` | Shared detection logic used by live and offline modes |
+| `tests/` | Automated pytest suite covering the engine and the offline pipeline |
 
 ### Alert types
 1. **dns_burst_anomaly** – many DNS requests from one source within a short time window  
@@ -43,6 +46,7 @@ The system is implemented in Python using Scapy. It includes the following main 
 - Real-time alerts in the terminal
 - JSON log files
 - CSV summary export
+- Self-contained HTML report (no external resources; opens in any browser)
 
 ---
 
@@ -75,6 +79,18 @@ python src/analyze_pcap.py --pcap logs/demo_capture.pcap --output logs/pcap_aler
   --scan-threshold 8 --dns-threshold 10 --window 20
 ```
 
+### HTML report
+
+```bash
+python src/generate_report.py logs/pcap_alerts.json --output logs/report.html
+```
+
+### Automated tests
+
+```bash
+python -m pytest tests/
+```
+
 ---
 
 ## 4. Experiments and Results
@@ -98,11 +114,20 @@ python src/analyze_pcap.py --pcap logs/demo_capture.pcap --output logs/pcap_aler
 2. **Threshold tuning** changes sensitivity: lower thresholds increase detection but also increase noise.
 3. **Offline PCAP analysis** allowed a controlled demonstration of all three alert types (DNS, Port Scan, ARP) without depending on live network noise.
 
+### Automated verification
+
+Beyond the manual runs above, the repository includes a pytest suite (37 tests) that
+verifies each detector in isolation — positive cases, negative cases (SYN-ACK packets,
+DNS responses, public-source traffic, gratuitous ARP), sliding-window trimming, and the
+per-source alert cooldown — plus an end-to-end test that regenerates the demo PCAP and
+asserts the offline pipeline reproduces exactly the three expected alerts.
+
 ### Evidence
 The following files are included with the submission:
 - `logs/run_a.json`, `logs/run_b.json`, `logs/run_after_tuning.json`
 - `logs/pcap_alerts.json`, `logs/demo_capture.pcap`
 - `logs/alerts_export.csv`, `logs/summary_by_type.csv`
+- `logs/report.html` (self-contained HTML report rendered from `pcap_alerts.json`)
 
 ---
 
@@ -119,15 +144,22 @@ The following files are included with the submission:
 ## 6. Strengths and Weaknesses
 
 ### Strengths
-- Working product with measurable outputs (JSON/CSV)
-- Modular design: live + offline + summary
+- Working product with measurable outputs (JSON/CSV/HTML)
+- Modular design: live + offline + summary + report, all sharing one detection engine
+- Automated pytest suite (37 tests), including an end-to-end reproducible demo pipeline
 - Clear academic discussion of sensitivity vs. false positives
 - Safe and legal – defensive tool in an authorized environment
 
 ### Weaknesses
 - Rule-based detection only (no automatic learning)
 - Depends on the network environment and noise level
-- No graphical user interface
+- No interactive GUI (reporting is a static HTML page)
+- The ARP IP→MAC table never expires, so a *legitimate* MAC change for an IP (a DHCP lease
+  handed to a new device, a NIC replacement) is reported as a conflict. This is a deliberate
+  trade-off: an expiring table would let a spoofer stay quiet for one window and then claim the
+  address unchallenged, which we judged the worse failure for a security tool.
+- An attacker who paces below a threshold (for example a slow port scan spread across many
+  windows) evades the sliding-window rules by design.
 
 ---
 
@@ -169,6 +201,13 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
 - Added log-summary module
 - Added offline PCAP analysis
 - Created a controlled demo PCAP to trigger all three alert types
+- Added an automated pytest suite (unit tests per detector + end-to-end pipeline test)
+- Added a self-contained HTML report generator (summary tiles, evidence cards, timeline)
+- Bounded the monitor's own memory: per-source state for sources that have gone quiet is pruned
+  periodically, so an attacker cannot exhaust the detector by flooding it with spoofed source
+  addresses (the ARP table is exempt on purpose — see Weaknesses)
+- Masked ECN bits out of the TCP flag test, so a SYN carrying ECE/CWR is still counted as a scan
+  probe rather than slipping past the filter
 
 ---
 
@@ -194,13 +233,21 @@ This work provided practical understanding of network monitoring, false positive
 
 ### A. Project structure
 ```
-network-anomaly-monitor/
+Mini-Project/
   src/
     detection.py
     detector.py
     analyze_pcap.py
     summarize_logs.py
+    generate_report.py
     generate_demo_pcap.py
+  tests/
+    conftest.py
+    test_detection.py
+    test_detector.py
+    test_pcap_pipeline.py
+    test_summarize_logs.py
+    test_generate_report.py
   logs/
     run_a.json
     run_b.json
@@ -209,6 +256,10 @@ network-anomaly-monitor/
     demo_capture.pcap
     alerts_export.csv
     summary_by_type.csv
+    report.html
+  docs/
+    work_plan.md
+    FINAL_REPORT.md
   requirements.txt
   README.md
 ```

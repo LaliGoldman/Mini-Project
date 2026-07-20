@@ -53,7 +53,13 @@ Shared detection tuning flags (both `detector.py` and `analyze_pcap.py`):
 `--window` (default 10s sliding window). The logs in `logs/` were produced with different
 thresholds (e.g. `run_a`/`run_b` use a 20s window) to demonstrate before/after tuning.
 
-There are no tests, linter config, or build step in the repo.
+Tests are pytest, in `tests/` (run from the repo root — `conftest.py` puts `src/` on the path):
+
+```bash
+python -m pytest tests/
+```
+
+There is no linter config or build step in the repo.
 
 ## Architecture
 
@@ -68,9 +74,16 @@ behavior:
   - `can_alert(key, now)` is a per-`(type, source)` **cooldown** (one alert per source per window)
     so a sustained attack produces one alert, not thousands. Any new detection type should route
     through it.
+  - `prune(now)` runs every `PRUNE_INTERVAL_PACKETS` packets and deletes scan/DNS/cooldown entries
+    for sources that have gone quiet, so spoofed-source floods can't grow the tables without
+    bound. It is behaviour-neutral (the queue dicts are defaultdicts). **`arp_table` is exempt on
+    purpose** — an expiring ARP table would let a spoofer wait out the window and claim an address
+    unchallenged.
   - `AlertLogger` accumulates alert dicts in memory and only writes on `flush()` — callers **must
     call `engine.flush()`** at the end or the JSON file is never written.
-  - Port-scan detection only counts **private-source** packets with flags `== 0x02` (pure SYN).
+  - Port-scan detection only counts **private-source** pure-SYN packets: TCP flags are masked with
+    `TCP_CONTROL_BITS` (`0x3F`) before comparing to `TCP_SYN`, so ECN bits (ECE/CWR) on an
+    otherwise-plain SYN don't hide a scanner, while SYN+PSH/ACK/FIN still don't count.
     ARP handler skips gratuitous/broadcast (`0.0.0.0`, `ff:ff:ff:ff:ff:ff`).
 
 - **[src/detector.py](src/detector.py)** — live front-end. Wraps scapy `sniff()`, passing

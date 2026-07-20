@@ -31,10 +31,18 @@ The scripts import `detection` as a top-level module, so **run them from inside 
 
 ### Offline analysis of a capture file (no root needed)
 
+`generate_demo_pcap.py` writes a deterministic synthetic capture that triggers all three alert
+types, so the offline path can be reproduced with no live network and no root:
+
 ```bash
+python src/generate_demo_pcap.py
+
 cd src
-python analyze_pcap.py --pcap ../captures/sample.pcapng --output ../logs/pcap_alerts.json
+python analyze_pcap.py --pcap ../logs/demo_capture.pcap --output ../logs/pcap_alerts.json \
+    --scan-threshold 8 --dns-threshold 10 --window 20
 ```
+
+Any real `.pcap` / `.pcapng` works the same way — pass it to `--pcap`.
 
 Offline mode advances the detection windows using each packet's **recorded** capture time, so
 results are deterministic and independent of how fast the file is read.
@@ -66,6 +74,17 @@ tiles, per-detection context cards, and a chronological timeline.
 cd src
 python generate_report.py ../logs/pcap_alerts.json --output ../logs/report.html
 ```
+
+### Run the tests
+
+```bash
+python -m pytest tests/
+```
+
+The suite covers each detector's positive and negative cases (SYN-ACK packets, DNS responses,
+public-source traffic, gratuitous ARP), sliding-window trimming, the per-source alert cooldown,
+state pruning, and an end-to-end test that regenerates the demo capture and asserts the offline
+pipeline reproduces exactly the three expected alerts.
 
 ## Detection tuning
 
