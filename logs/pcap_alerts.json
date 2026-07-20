@@ -9,6 +9,27 @@
     }
   },
   {
+    "timestamp": "2023-11-14T22:13:51.800000+00:00",
+    "type": "dns_burst_anomaly",
+    "details": {
+      "source_ip": "192.168.8.70",
+      "requests_in_window": 10,
+      "window_seconds": 20
+    }
+  },
+  {
+    "timestamp": "2023-11-14T22:13:52.800000+00:00",
+    "type": "possible_dns_tunnel",
+    "details": {
+      "source_ip": "192.168.8.70",
+      "parent_domain": "exfil-demo.test",
+      "unique_subdomains_in_window": 15,
+      "queries_in_window": 15,
+      "unique_ratio": 1.0,
+      "window_seconds": 20
+    }
+  },
+  {
     "timestamp": "2023-11-14T22:13:30.400000+00:00",
     "type": "possible_port_scan",
     "details": {
