@@ -33,7 +33,7 @@ The system is implemented in Python using Scapy. It includes the following main 
 | `analyze_pcap.py` | Offline analysis of a saved PCAP file |
 | `summarize_logs.py` | Log summary, run comparison, and CSV export |
 | `generate_report.py` | Self-contained HTML report (summary tiles, evidence cards, timeline) |
-| `generate_demo_pcap.py` | Deterministic demo capture that triggers all three alert types |
+| `generate_demo_pcap.py` | Deterministic demo capture that triggers every alert type |
 | `detection.py` | Shared detection logic used by live and offline modes |
 | `tests/` | Automated pytest suite covering the engine and the offline pipeline |
 
@@ -41,6 +41,20 @@ The system is implemented in Python using Scapy. It includes the following main 
 1. **dns_burst_anomaly** – many DNS requests from one source within a short time window  
 2. **possible_port_scan** – many unique destination ports (SYN packets from private sources)  
 3. **possible_arp_spoofing** – the same IP appears with different MAC addresses  
+4. **possible_dns_tunnel** – many *unique subdomains of one parent domain* from one source, with
+   almost no repeated lookups  
+
+Rules 1 and 4 are deliberately **orthogonal signals evaluated on the same packets**. The burst rule
+asks *how many?*; the tunnelling rule asks *what shape?* DNS tunnelling tools (iodine, dnscat2)
+encode payload bytes into the leftmost label, so every lookup is a fresh hostname beneath one
+attacker-controlled parent and nothing is ever re-queried. A legitimate burst is the mirror image:
+many lookups spread across many *different* parents, with repeats as caches expire. Requiring a
+high unique-to-total ratio is what keeps a busy content-delivery domain from being mistaken for a
+tunnel.
+
+This rule was **added after the submitted work plan**. It answers a limitation we recorded
+ourselves during testing (section 4, conclusion 1: DNS bursts on a home network produced probable
+false positives) and implements what we had listed only as future work ("unusual DNS by domain").
 
 ### Output
 - Real-time alerts in the terminal
@@ -76,7 +90,7 @@ python src/summarize_logs.py logs/run_a.json logs/run_b.json logs/run_after_tuni
 ```bash
 python src/generate_demo_pcap.py
 python src/analyze_pcap.py --pcap logs/demo_capture.pcap --output logs/pcap_alerts.json \
-  --scan-threshold 8 --dns-threshold 10 --window 20
+  --scan-threshold 8 --dns-threshold 10 --fanout-threshold 15 --window 20
 ```
 
 ### HTML report
@@ -107,20 +121,28 @@ python -m pytest tests/
 | `run_a.json` | scan=8, dns=10, window=20 | 3 | DNS burst ×3 |
 | `run_b.json` | scan=12, dns=15, window=20 | 3 | DNS burst ×3 |
 | `run_after_tuning.json` | scan=12, dns=15, window=20 | 4 | DNS burst ×4 |
-| `pcap_alerts.json` | scan=8, dns=10, window=20 | 3 | DNS + Port Scan + ARP |
+| `pcap_alerts.json` | scan=8, dns=10, fanout=15, window=20 | 5 | DNS burst ×2 + DNS tunnel + Port Scan + ARP |
 
 ### Conclusions
 1. **DNS burst** appeared consistently on a home network – some alerts may be false positives.
 2. **Threshold tuning** changes sensitivity: lower thresholds increase detection but also increase noise.
-3. **Offline PCAP analysis** allowed a controlled demonstration of all three alert types (DNS, Port Scan, ARP) without depending on live network noise.
+3. **Offline PCAP analysis** allowed a controlled demonstration of every alert type without depending on live network noise.
+4. **Two rules on the same traffic beat one.** The demo capture contains two DNS sources of equal
+   volume: a page-load-shaped burst (`192.168.8.50`) and an exfiltration tunnel (`192.168.8.70`).
+   The volume rule cannot tell them apart — it flags both. The tunnelling rule flags only the
+   second. This is the clearest result in the project: it shows that *what* traffic looks like
+   carries information that *how much* traffic there is cannot express, and it is the difference
+   between counting packets and reasoning about attack structure.
 
 ### Automated verification
 
-Beyond the manual runs above, the repository includes a pytest suite (37 tests) that
+Beyond the manual runs above, the repository includes a pytest suite (54 tests) that
 verifies each detector in isolation — positive cases, negative cases (SYN-ACK packets,
-DNS responses, public-source traffic, gratuitous ARP), sliding-window trimming, and the
-per-source alert cooldown — plus an end-to-end test that regenerates the demo PCAP and
-asserts the offline pipeline reproduces exactly the three expected alerts.
+DNS responses, public-source traffic, gratuitous ARP, queries spread across distinct parent
+domains, re-queried CDN hostnames), sliding-window trimming, the per-source alert cooldown,
+and state pruning — plus end-to-end tests that regenerate the demo PCAP and assert both the
+exact set of alerts produced and the specificity contrast described in conclusion 4: that the
+benign DNS burst is flagged by the volume rule *only*.
 
 ### Evidence
 The following files are included with the submission:
@@ -146,7 +168,7 @@ The following files are included with the submission:
 ### Strengths
 - Working product with measurable outputs (JSON/CSV/HTML)
 - Modular design: live + offline + summary + report, all sharing one detection engine
-- Automated pytest suite (37 tests), including an end-to-end reproducible demo pipeline
+- Automated pytest suite (54 tests), including an end-to-end reproducible demo pipeline
 - Clear academic discussion of sensitivity vs. false positives
 - Safe and legal – defensive tool in an authorized environment
 
@@ -160,6 +182,14 @@ The following files are included with the submission:
   address unchallenged, which we judged the worse failure for a security tool.
 - An attacker who paces below a threshold (for example a slow port scan spread across many
   windows) evades the sliding-window rules by design.
+- The tunnelling rule groups queries by the **last two labels** of the name rather than using a
+  Public Suffix List, so names under a multi-part suffix (`a.example.co.uk`) collapse into a
+  single bucket and unrelated sites can share it. Solving this properly requires bundling the PSL
+  as a data file, which we judged out of scope for a project with one dependency.
+- The unique-to-total ratio only speaks once there is evidence of re-querying. A **cold cache** —
+  a first-contact burst of distinct hostnames under one shared content-delivery domain — has no
+  repeats yet and can still read as a tunnel. The fanout threshold carries that case, since one
+  parent domain rarely serves that many distinct hosts for a single page.
 
 ---
 
@@ -179,6 +209,8 @@ Instead of building a classic attack tool, we built a **measurable defensive sys
 - Threshold comparison as a research method
 - Separation between live and offline analysis
 - Focused filtering (SYN + private IP) to reduce noise
+- Two orthogonal rules over the same DNS packets — volume and structure — so the system can
+  distinguish a busy host from a tunnelling one instead of merely flagging both as "a lot of DNS"
 
 Paradigm shift: an IDS does not have to be a heavy commercial product – a lightweight rule-based tool can still teach meaningful network-security concepts.
 
@@ -200,7 +232,7 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
 - Port-scan detection limited to SYN packets from private sources
 - Added log-summary module
 - Added offline PCAP analysis
-- Created a controlled demo PCAP to trigger all three alert types
+- Created a controlled demo PCAP to trigger every alert type
 - Added an automated pytest suite (unit tests per detector + end-to-end pipeline test)
 - Added a self-contained HTML report generator (summary tiles, evidence cards, timeline)
 - Bounded the monitor's own memory: per-source state for sources that have gone quiet is pruned
@@ -208,6 +240,13 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
   addresses (the ARP table is exempt on purpose — see Weaknesses)
 - Masked ECN bits out of the TCP flag test, so a SYN carrying ECE/CWR is still counted as a scan
   probe rather than slipping past the filter
+- Added a fourth heuristic, `possible_dns_tunnel`, detecting unique-subdomain fanout under one
+  parent domain — an orthogonal signal to the existing DNS volume rule
+- Rebuilt the demo capture's benign DNS traffic. The original 20 lookups were
+  `host0..host19.example.com` — 20 unique subdomains of one parent with no repeats, which is
+  precisely the tunnelling pattern. Our "legitimate" reference traffic was therefore shaped like an
+  attack. It now spans many parent domains with repeats, as a real page load does, and a test
+  asserts it trips the volume rule *only*
 
 ---
 
@@ -215,7 +254,8 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
 
 - Dynamic baseline by time of day
 - Simple GUI for alert visualization
-- Additional detection rules (for example unusual DNS by domain)
+- Public Suffix List support, so `parent_domain` grouping is exact rather than last-two-labels
+- Query-name length as a third DNS signal (tunnels pack labels toward the 63-byte limit)
 - SIEM integration
 
 ---

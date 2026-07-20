@@ -2,14 +2,20 @@
 
 A defensive network-security tool for the BGU course *Topics in Network Security* (202-1-4481).
 It sniffs traffic — live from an interface or offline from a capture file — and emits JSON alerts
-for three common attack patterns:
+for four common attack patterns:
 
 - **TCP SYN port scan** — a single source touching many distinct destination ports with pure-SYN
   packets inside a short window.
 - **ARP spoofing** — an IP whose advertised MAC address changes (an IP↔MAC conflict), the signature
   of ARP cache poisoning.
-- **DNS request burst** — a source issuing an abnormal number of DNS requests in a short window
-  (e.g. tunneling or exfiltration).
+- **DNS request burst** — a source issuing an abnormal number of DNS requests in a short window.
+- **DNS tunneling** — a source querying many *unique subdomains of one parent domain* with almost
+  no repeats: the shape of payload encoded into hostnames, as iodine and dnscat2 do.
+
+The last two are deliberately **orthogonal signals on the same packets**. The burst rule asks *how
+many?*, the tunneling rule asks *what shape?* A page load fanning out across many different domains
+trips the first and not the second; an exfiltration tunnel trips both. The demo capture contains one
+source of each so the contrast is reproducible.
 
 The detection logic lives in one engine ([src/detection.py](src/detection.py)); two thin
 front-ends feed packets into it — one for live capture, one for replaying a saved capture — so
@@ -31,15 +37,15 @@ The scripts import `detection` as a top-level module, so **run them from inside 
 
 ### Offline analysis of a capture file (no root needed)
 
-`generate_demo_pcap.py` writes a deterministic synthetic capture that triggers all three alert
-types, so the offline path can be reproduced with no live network and no root:
+`generate_demo_pcap.py` writes a deterministic synthetic capture that triggers every alert type,
+so the offline path can be reproduced with no live network and no root:
 
 ```bash
 python src/generate_demo_pcap.py
 
 cd src
 python analyze_pcap.py --pcap ../logs/demo_capture.pcap --output ../logs/pcap_alerts.json \
-    --scan-threshold 8 --dns-threshold 10 --window 20
+    --scan-threshold 8 --dns-threshold 10 --fanout-threshold 15 --window 20
 ```
 
 Any real `.pcap` / `.pcapng` works the same way — pass it to `--pcap`.
@@ -82,9 +88,10 @@ python -m pytest tests/
 ```
 
 The suite covers each detector's positive and negative cases (SYN-ACK packets, DNS responses,
-public-source traffic, gratuitous ARP), sliding-window trimming, the per-source alert cooldown,
-state pruning, and an end-to-end test that regenerates the demo capture and asserts the offline
-pipeline reproduces exactly the three expected alerts.
+public-source traffic, gratuitous ARP, distinct parent domains, re-queried CDN hosts),
+sliding-window trimming, the per-source alert cooldown, state pruning, and end-to-end tests that
+regenerate the demo capture and assert both the exact set of alerts and the specificity contrast
+— that the benign DNS burst is *not* flagged as a tunnel.
 
 ## Detection tuning
 
@@ -92,6 +99,7 @@ Both `detector.py` and `analyze_pcap.py` accept the same tuning flags:
 
 - `--scan-threshold` — unique destination ports per source within the window (default **20**).
 - `--dns-threshold` — DNS requests per source within the window (default **30**).
+- `--fanout-threshold` — unique subdomains under one parent domain per source (default **15**).
 - `--window` — sliding-window length in seconds (default **10**).
 
 The pre-generated logs in [logs/](logs/) were produced with different thresholds (e.g. a 20 s
@@ -113,9 +121,17 @@ Alerts are written as a flat JSON array. Each entry has a fixed shape:
 }
 ```
 
-`type` is one of `possible_port_scan`, `possible_arp_spoofing`, or `dns_burst_anomaly`. The source
-identifier lives inside `details` as `source_ip` (scan/DNS) or `ip` (ARP). To avoid flooding, the
-engine emits at most one alert per `(type, source)` per window.
+`type` is one of `possible_port_scan`, `possible_arp_spoofing`, `dns_burst_anomaly`, or
+`possible_dns_tunnel`. The source identifier lives inside `details` as `source_ip` (scan/DNS) or
+`ip` (ARP). To avoid flooding, the engine emits at most one alert per `(type, source)` per window.
+
+### Known limitations of the tunneling rule
+
+- Parent domains are grouped by the **last two labels**, not a Public Suffix List, so names under a
+  multi-part suffix (`a.example.co.uk`) collapse into one bucket.
+- A **cold cache** defeats the unique-to-total ratio: a first-contact burst of distinct hostnames
+  under one shared CDN parent has no repeats yet and can read as a tunnel. The fanout threshold is
+  what carries that case, since one parent rarely serves that many distinct hosts on a single page.
 
 ## Project layout
 

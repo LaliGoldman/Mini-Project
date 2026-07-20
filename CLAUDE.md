@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A course mini-project (BGU "Topics in Network Security", 202-1-4481). The implemented code is a
 **defensive** network anomaly monitor: it sniffs traffic (live or from a PCAP) and emits JSON
-alerts for three heuristics — TCP SYN port scans, ARP spoofing (IP↔MAC conflicts), and DNS request
-bursts.
+alerts for four heuristics — TCP SYN port scans, ARP spoofing (IP↔MAC conflicts), DNS request
+bursts, and DNS tunneling (unique-subdomain fanout under one parent domain).
 
 The [assignment brief](docs/mini_project_network_security.md) frames the project as **offensive**
 (build/propagate "malware"). The team went **defensive** instead, and the **instructor approved
@@ -29,9 +29,9 @@ Python 3.12. Scripts import `detection` as a top-level module, so **run them fro
 python src/generate_demo_pcap.py
 
 cd src
-# Offline analysis of that capture (thresholds tuned to trigger all three alert types):
+# Offline analysis of that capture (thresholds tuned to trigger every alert type):
 python analyze_pcap.py --pcap ../logs/demo_capture.pcap --output ../logs/pcap_alerts.json \
-    --scan-threshold 8 --dns-threshold 10 --window 20
+    --scan-threshold 8 --dns-threshold 10 --fanout-threshold 15 --window 20
 
 # Live capture (needs root/CAP_NET_RAW for the interface):
 sudo python detector.py --interface eth0 --duration 120 --output ../logs/alerts.json
@@ -44,13 +44,25 @@ python summarize_logs.py ../logs/run_a.json ../logs/run_b.json \
 python generate_report.py
 ```
 
-`generate_demo_pcap.py` builds a fixed set of packets (20 DNS from one private source, a 24-port
-SYN sweep, and an ARP IP↔MAC conflict) so offline analysis reproduces the same alerts every run —
-this is the reproducible evidence path, replacing the need for a captured `.pcap`.
+`generate_demo_pcap.py` builds a fixed set of packets so offline analysis reproduces the same
+alerts every run — this is the reproducible evidence path, replacing the need for a captured
+`.pcap`. It contains four scenarios:
+
+- `192.168.8.50` — a **benign-shaped** DNS burst: high volume, but spread across many parent
+  domains with repeats. Trips the volume rule and **must not** trip the tunneling rule.
+- `192.168.8.70` — a **DNS tunnel**: 20 unique subdomains of one parent, no repeats. Trips both.
+- `192.168.8.60` — a 24-port SYN sweep.
+- `192.168.8.10` — an ARP IP↔MAC conflict.
+
+The `.50` / `.70` contrast is the point: it demonstrates the tunneling rule *adds* detection rather
+than echoing the volume rule. `tests/test_pcap_pipeline.py` pins it, so editing `BENIGN_LOOKUPS`
+into something tunnel-shaped (many unique subdomains of one parent, as the original demo
+accidentally had) fails the suite.
 
 Shared detection tuning flags (both `detector.py` and `analyze_pcap.py`):
 `--scan-threshold` (default 20 unique dports), `--dns-threshold` (default 30 requests),
-`--window` (default 10s sliding window). The logs in `logs/` were produced with different
+`--fanout-threshold` (default 15 unique subdomains per parent), `--window` (default 10s
+sliding window). The logs in `logs/` were produced with different
 thresholds (e.g. `run_a`/`run_b` use a 20s window) to demonstrate before/after tuning.
 
 Tests are pytest, in `tests/` (run from the repo root — `conftest.py` puts `src/` on the path):
@@ -69,8 +81,9 @@ behavior:
 - **[src/detection.py](src/detection.py)** — the whole engine. `DetectionEngine.process_packet()`
   is the single entry point both front-ends feed packets into.
   - `WindowState` holds the per-source sliding-window bookkeeping: deques of `(time, dport)` for
-    scans, deques of timestamps for DNS, and an `ip → mac` table for ARP. Queues are trimmed by
-    `window_seconds` on every event.
+    scans, deques of timestamps for DNS volume, deques of `(time, qname)` keyed by
+    `(source, parent_domain)` for DNS fanout, and an `ip → mac` table for ARP. Queues are trimmed
+    by `window_seconds` on every event.
   - `can_alert(key, now)` is a per-`(type, source)` **cooldown** (one alert per source per window)
     so a sustained attack produces one alert, not thousands. Any new detection type should route
     through it.
@@ -81,6 +94,10 @@ behavior:
     unchallenged.
   - `AlertLogger` accumulates alert dicts in memory and only writes on `flush()` — callers **must
     call `engine.flush()`** at the end or the JSON file is never written.
+  - DNS is evaluated by **two orthogonal rules on the same packet**: `dns_burst_anomaly` (volume)
+    and `possible_dns_tunnel` (shape — unique subdomains under one `parent_domain`, requiring a
+    unique-to-total ratio ≥ `DNS_TUNNEL_MIN_UNIQUE_RATIO` so re-queried CDN hosts don't fire).
+    `parent_domain()` is last-two-labels, **not** a Public Suffix List — documented, not solved.
   - Port-scan detection only counts **private-source** pure-SYN packets: TCP flags are masked with
     `TCP_CONTROL_BITS` (`0x3F`) before comparing to `TCP_SYN`, so ECN bits (ECE/CWR) on an
     otherwise-plain SYN don't hide a scanner, while SYN+PSH/ACK/FIN still don't count.
@@ -101,7 +118,7 @@ behavior:
   cross-file comparison when given multiple logs, and exports detailed + summary CSVs.
 
 - **[src/generate_demo_pcap.py](src/generate_demo_pcap.py)** — writes `logs/demo_capture.pcap`, a
-  fixed synthetic capture with hard-coded packet `.time` values that triggers all three alert types.
+  fixed synthetic capture with hard-coded packet `.time` values that triggers every alert type.
   It is the reproducible input behind `logs/pcap_alerts.json`. The output path is anchored to the
   script's own location (`DEFAULT_OUTPUT`), so it lands in the repo-level `logs/` from any cwd.
 

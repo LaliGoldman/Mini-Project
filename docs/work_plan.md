@@ -119,3 +119,39 @@ evidence that triggered it** — not a generic metrics dashboard.
       committed `logs/report.html` byte-identical to regeneration; 37/37 tests green
 
 Phase 6 complete (2026-07-20); pushed to `origin/yuval`.
+
+---
+
+## Phase 7 — Engine hardening and a fourth detector (added after submission of this plan)
+
+Two review findings drove this phase. Both were limitations we had recorded ourselves:
+the report's own observation that home-network DNS bursts produced probable false positives,
+and "unusual DNS by domain" sitting unimplemented in the future-work list.
+
+### 7a — Engine hardening
+
+- [x] Bound the monitor's own memory: `prune()` drops scan/DNS/fanout/cooldown state for sources
+      that have gone quiet, so a flood of spoofed source addresses cannot exhaust the detector.
+      Behaviour-neutral — a test asserts identical alerts at prune intervals of 1 and 10,000
+- [x] `arp_table` deliberately exempt from pruning, with the trade-off documented in code:
+      an expiring table would let a spoofer wait out one window and claim an address unchallenged
+- [x] Mask ECN bits (ECE/CWR) before the pure-SYN test — a SYN with flags `0xC2` previously
+      bypassed port-scan detection entirely
+
+### 7b — `possible_dns_tunnel`
+
+- [x] Fourth heuristic: unique subdomains under one parent domain per source, requiring a high
+      unique-to-total ratio so re-queried CDN hostnames don't fire
+- [x] `--fanout-threshold` on both front-ends (default 15)
+- [x] **Rebuilt the demo capture's benign DNS traffic.** The original 20 lookups were
+      `host0..host19.example.com` — 20 unique subdomains of one parent, no repeats, i.e. exactly
+      the tunnelling pattern. Our reference "legitimate" traffic was shaped like an attack, and
+      the new rule would have flagged it. It now spans many parent domains with repeats
+- [x] Demo capture gained a genuine tunnel source (`192.168.8.70`), so `.50` trips the volume rule
+      only and `.70` trips both — the contrast that shows the new rule *adds* detection
+- [x] Report card + timeline evidence for the new type
+- [x] Limitations documented, not hidden: last-two-labels grouping instead of a Public Suffix
+      List, and a cold cache defeating the ratio check
+- [x] Verified: 54/54 tests green; demo pipeline, HTML report and CSV exports regenerated
+
+Phase 7 complete (2026-07-20).
