@@ -20,21 +20,23 @@ def make_engine(
     dns_threshold: int = 5,
     scan_threshold: int = 20,
     window: int = 10,
+    fanout_threshold: int = 15,
 ) -> DetectionEngine:
     return DetectionEngine(
         output=tmp_path / "alerts.json",
         scan_threshold=scan_threshold,
         dns_threshold=dns_threshold,
+        fanout_threshold=fanout_threshold,
         window=window,
         print_alerts=False,
     )
 
 
-def dns_packet(src_ip: str, qr: int):
+def dns_packet(src_ip: str, qr: int, qname: str = "example.com"):
     return (
         IP(src=src_ip, dst="192.168.1.1")
         / UDP(sport=40000, dport=53)
-        / DNS(qr=qr, qd=DNSQR(qname="example.com"))
+        / DNS(qr=qr, qd=DNSQR(qname=qname))
     )
 
 
@@ -61,6 +63,105 @@ def test_dns_burst_from_public_source_ignored(tmp_path: Path) -> None:
     engine = make_engine(tmp_path)
     feed_dns_burst(engine, "8.8.8.8", qr=0, count=10)
     assert engine.logger.alerts == []
+
+
+def feed_dns_names(
+    engine: DetectionEngine,
+    src_ip: str,
+    names: list[str],
+    step_seconds: float = 0.1,
+) -> None:
+    for i, name in enumerate(names):
+        engine.process_packet(
+            dns_packet(src_ip, qr=0, qname=name),
+            now=BASE_TIME + timedelta(seconds=step_seconds * i),
+        )
+
+
+def tunnel_names(count: int, parent: str = "t.exfil.test") -> list[str]:
+    """Payload-carrying subdomains: every lookup a fresh unique label."""
+    return [f"p{i:04x}data{i}.{parent}" for i in range(count)]
+
+
+# dns_threshold is parked out of reach in these tests so the volume rule stays
+# silent and only the fanout rule under test can fire.
+QUIET_BURST = 10_000
+
+
+def test_dns_tunnel_fanout_alerts(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15)
+    feed_dns_names(engine, "192.168.1.50", tunnel_names(15))
+    assert [a["type"] for a in engine.logger.alerts] == ["possible_dns_tunnel"]
+    details = engine.logger.alerts[0]["details"]
+    assert details["source_ip"] == "192.168.1.50"
+    assert details["parent_domain"] == "exfil.test"
+    assert details["unique_subdomains_in_window"] == 15
+
+
+def test_distinct_parent_domains_do_not_trigger_tunnel(tmp_path: Path) -> None:
+    # A page load fans out across many *different* registrable domains. High
+    # volume, but no single parent accumulates unique children.
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15)
+    feed_dns_names(engine, "192.168.1.50", [f"www.site{i}.example" for i in range(30)])
+    assert engine.logger.alerts == []
+
+
+def test_repeated_qname_does_not_inflate_unique_count(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15)
+    feed_dns_names(engine, "192.168.1.50", ["www.example.com"] * 40)
+    assert engine.logger.alerts == []
+
+
+def test_cdn_style_repeats_do_not_trigger_tunnel(tmp_path: Path) -> None:
+    # Many unique hostnames under one shared CDN parent, but re-queried as
+    # caches expire and pages pull several resources per host. A tunnel never
+    # repeats itself; this does, so the unique-to-total ratio holds it back.
+    #
+    # Note the repeats are interleaved, not appended. A *cold* cache -- 15
+    # first-contact lookups with no repeat yet -- has a ratio of 1.0 and does
+    # alert; the ratio can only speak once there is re-query evidence. The
+    # fanout threshold is what carries that case, since a single parent rarely
+    # serves that many distinct hosts on one page. Documented as a limitation.
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15)
+    names: list[str] = []
+    for i in range(16):
+        names.append(f"edge{i}.cloudfront.net")
+        names.extend([f"edge{max(0, i - 1)}.cloudfront.net"] * 2)
+    feed_dns_names(engine, "192.168.1.50", names)
+    assert engine.logger.alerts == []
+
+
+def test_tunnel_fanout_window_slides(tmp_path: Path) -> None:
+    engine = make_engine(
+        tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15, window=10
+    )
+    feed_dns_names(engine, "192.168.1.50", tunnel_names(15), step_seconds=1.0)
+    assert engine.logger.alerts == []
+
+
+def test_tunnel_cooldown_limits_alerts_to_one_per_window(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15)
+    feed_dns_names(engine, "192.168.1.50", tunnel_names(60), step_seconds=0.05)
+    assert [a["type"] for a in engine.logger.alerts] == ["possible_dns_tunnel"]
+
+
+def test_short_qnames_are_ignored_for_fanout(tmp_path: Path) -> None:
+    # A bare two-label name has no subdomain to carry payload, and grouping it
+    # by "last two labels" would make it its own parent.
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, fanout_threshold=15)
+    feed_dns_names(engine, "192.168.1.50", [f"site{i}.test" for i in range(30)])
+    assert engine.logger.alerts == []
+
+
+def test_tunnel_state_is_pruned_like_other_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(detection, "PRUNE_INTERVAL_PACKETS", 50)
+    engine = make_engine(tmp_path, dns_threshold=QUIET_BURST, window=10)
+    feed_dns_names(engine, "192.168.1.50", tunnel_names(10))
+    assert len(engine.state.dns_fanout) == 1
+    flood_unique_sources(engine, count=30, at=BASE_TIME + timedelta(seconds=300))
+    assert engine.state.dns_fanout == {}
 
 
 def syn_packet(src_ip: str, dport: int, flags: str = "S"):

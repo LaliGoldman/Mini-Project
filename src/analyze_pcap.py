@@ -14,6 +14,7 @@ def run(
     scan_threshold: int,
     dns_threshold: int,
     window: int,
+    fanout_threshold: int = 15,
 ) -> None:
     if not pcap_path.exists():
         raise FileNotFoundError(f"PCAP file not found: {pcap_path}")
@@ -22,6 +23,7 @@ def run(
         output=output,
         scan_threshold=scan_threshold,
         dns_threshold=dns_threshold,
+        fanout_threshold=fanout_threshold,
         window=window,
     )
 
@@ -57,6 +59,12 @@ def parse_args() -> argparse.Namespace:
         default=30,
         help="DNS requests per source within window",
     )
+    parser.add_argument(
+        "--fanout-threshold",
+        type=int,
+        default=15,
+        help="Unique subdomains under one parent domain per source within window",
+    )
     parser.add_argument("--window", type=int, default=10, help="Sliding window in seconds")
     return parser.parse_args()
 
@@ -68,5 +76,6 @@ if __name__ == "__main__":
         output=args.output,
         scan_threshold=args.scan_threshold,
         dns_threshold=args.dns_threshold,
+        fanout_threshold=args.fanout_threshold,
         window=args.window,
     )
