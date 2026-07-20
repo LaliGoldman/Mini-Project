@@ -5,8 +5,11 @@ from pathlib import Path
 
 import json
 
+import pytest
+
 from scapy.all import ARP, DNS, DNSQR, IP, TCP, UDP  # type: ignore
 
+import detection
 from detection import DetectionEngine
 
 BASE_TIME = datetime(2026, 7, 18, 12, 0, 0, tzinfo=timezone.utc)
@@ -189,6 +192,108 @@ def test_clean_traffic_produces_no_alerts(tmp_path: Path) -> None:
         )
     engine.process_packet(arp_packet("192.168.1.10", "aa:bb:cc:dd:ee:01"), now=BASE_TIME)
     assert engine.logger.alerts == []
+
+
+def test_syn_with_ecn_bits_still_counts_as_scan(tmp_path: Path) -> None:
+    # A SYN may carry ECN negotiation bits (ECE/CWR). Those are still SYN
+    # packets and a scanner using them must not slip past the detector.
+    engine = make_engine(tmp_path, scan_threshold=20)
+    feed_syn_sweep(engine, "192.168.1.60", ports=range(1, 21), flags="SEC")
+    assert [a["type"] for a in engine.logger.alerts] == ["possible_port_scan"]
+
+
+def test_syn_with_payload_flags_does_not_count(tmp_path: Path) -> None:
+    # PSH/ACK/FIN alongside SYN is not a scan probe; only the six base TCP
+    # control bits are considered, so these must stay filtered out.
+    engine = make_engine(tmp_path, scan_threshold=20)
+    feed_syn_sweep(engine, "192.168.1.60", ports=range(1, 31), flags="SP")
+    assert engine.logger.alerts == []
+
+
+def flood_unique_sources(engine: DetectionEngine, count: int, at: datetime) -> None:
+    """One SYN and one DNS query each from `count` distinct spoofed sources."""
+    for i in range(count):
+        src = f"10.{i // 256}.{i % 256}.7"
+        engine.process_packet(syn_packet(src, dport=80), now=at)
+        engine.process_packet(dns_packet(src, qr=0), now=at)
+
+
+def test_stale_per_source_state_is_pruned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A flood of spoofed source IPs must not grow the monitor's memory without
+    # bound -- otherwise the detector itself is a resource-exhaustion target.
+    monkeypatch.setattr(detection, "PRUNE_INTERVAL_PACKETS", 50)
+    engine = make_engine(tmp_path, window=10)
+
+    flood_unique_sources(engine, count=200, at=BASE_TIME)
+    assert len(engine.state.scan_ports) == 200
+    assert len(engine.state.dns_requests) == 200
+
+    # Well past the window: every one of those sources is now stale.
+    flood_unique_sources(engine, count=25, at=BASE_TIME + timedelta(seconds=60))
+
+    assert len(engine.state.scan_ports) == 25
+    assert len(engine.state.dns_requests) == 25
+
+
+def test_pruning_keeps_sources_still_inside_the_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(detection, "PRUNE_INTERVAL_PACKETS", 10)
+    engine = make_engine(tmp_path, window=10)
+
+    engine.process_packet(syn_packet("192.168.1.99", dport=80), now=BASE_TIME)
+    # Enough traffic to trigger a sweep, but only 2s later -- still in window.
+    flood_unique_sources(engine, count=20, at=BASE_TIME + timedelta(seconds=2))
+
+    assert "192.168.1.99" in engine.state.scan_ports
+
+
+def test_pruning_never_forgets_arp_mappings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The ARP table is deliberately permanent: expiring it would let a spoofer
+    # simply wait out the window and never be flagged.
+    monkeypatch.setattr(detection, "PRUNE_INTERVAL_PACKETS", 10)
+    engine = make_engine(tmp_path, window=10)
+
+    engine.process_packet(arp_packet("192.168.1.10", "aa:bb:cc:dd:ee:01"), now=BASE_TIME)
+    flood_unique_sources(engine, count=50, at=BASE_TIME + timedelta(seconds=600))
+    engine.process_packet(
+        arp_packet("192.168.1.10", "aa:bb:cc:dd:ee:02"), now=BASE_TIME + timedelta(seconds=900)
+    )
+
+    assert [a["type"] for a in engine.logger.alerts] == ["possible_arp_spoofing"]
+
+
+def test_pruning_does_not_change_detection_results(tmp_path: Path) -> None:
+    # Pruning must be behaviour-neutral: an entry trimmed to empty and an
+    # entry that was deleted are indistinguishable to the detectors.
+    def run_with(interval: int) -> list:
+        engine = make_engine(tmp_path, dns_threshold=5, scan_threshold=20, window=10)
+        engine.prune_interval = interval
+        feed_dns_burst(engine, "192.168.1.50", qr=0, count=8)
+        feed_syn_sweep(engine, "192.168.1.60", ports=range(1, 25))
+        engine.process_packet(arp_packet("192.168.1.10", "aa:bb:cc:dd:ee:01"), now=BASE_TIME)
+        engine.process_packet(
+            arp_packet("192.168.1.10", "aa:bb:cc:dd:ee:02"), now=BASE_TIME + timedelta(seconds=1)
+        )
+        return engine.logger.alerts
+
+    assert run_with(interval=1) == run_with(interval=10_000)
+
+
+def test_expired_cooldown_entries_are_pruned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(detection, "PRUNE_INTERVAL_PACKETS", 50)
+    engine = make_engine(tmp_path, dns_threshold=5, window=10)
+
+    for i in range(40):
+        feed_dns_burst(engine, f"10.9.{i}.4", qr=0, count=5)
+    assert len(engine.alert_cooldown) == 40
+
+    flood_unique_sources(engine, count=30, at=BASE_TIME + timedelta(seconds=300))
+    assert engine.alert_cooldown == {}
 
 
 def test_flush_writes_alert_schema(tmp_path: Path) -> None:

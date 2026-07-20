@@ -10,6 +10,18 @@ from typing import Deque, Dict, List, Optional, Set, Tuple
 from scapy.all import ARP, DNS, IP, TCP  # type: ignore
 
 
+# How many packets between sweeps of the per-source bookkeeping. Sweeping on
+# every packet would be wasteful; the dicts only need to stay bounded, not be
+# exact at every instant.
+PRUNE_INTERVAL_PACKETS = 1000
+
+# Mask covering the six base TCP control bits (FIN/SYN/RST/PSH/ACK/URG). The
+# top two bits (ECE/CWR) are ECN negotiation and may accompany a legitimate
+# SYN, so they are masked off before testing for a pure SYN probe.
+TCP_CONTROL_BITS = 0x3F
+TCP_SYN = 0x02
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -52,7 +64,43 @@ class WindowState:
         self._trim_time_queue(queue, now)
         return len(queue)
 
+    def prune(self, now: datetime) -> None:
+        """Drop per-source bookkeeping whose events have all aged out.
+
+        Behaviour-neutral: the queue dicts are defaultdicts, so a deleted entry
+        is recreated on the source's next packet and is indistinguishable from
+        one that had been trimmed to empty. Without this a flood of spoofed
+        source addresses would grow the tables without bound, making the
+        monitor itself a resource-exhaustion target.
+
+        `arp_table` is deliberately exempt -- see `check_arp_conflict`.
+        """
+        stale_scans = [
+            src_ip
+            for src_ip, queue in self.scan_ports.items()
+            if not queue or (now - queue[-1][0]).total_seconds() > self.window_seconds
+        ]
+        for src_ip in stale_scans:
+            del self.scan_ports[src_ip]
+
+        stale_dns = [
+            src_ip
+            for src_ip, queue in self.dns_requests.items()
+            if not queue or (now - queue[-1]).total_seconds() > self.window_seconds
+        ]
+        for src_ip in stale_dns:
+            del self.dns_requests[src_ip]
+
     def check_arp_conflict(self, ip_addr: str, mac_addr: str) -> Tuple[bool, str]:
+        """Compare an IP's advertised MAC against the first one ever seen.
+
+        The mapping never expires. That is a deliberate trade-off: an expiring
+        table would let a spoofer simply stay quiet for one window and then
+        claim the address unchallenged. The cost is that a legitimate MAC
+        change for an IP (DHCP lease handed to a new device, NIC swap) is
+        reported as a conflict -- acceptable for the monitoring sessions this
+        tool is built for, and noted as a known limitation in the report.
+        """
         previous_mac = self.arp_table.get(ip_addr)
         if previous_mac is None:
             self.arp_table[ip_addr] = mac_addr
@@ -99,6 +147,19 @@ class DetectionEngine:
         self.state = WindowState(window_seconds=window)
         self.logger = AlertLogger(output_path=output, print_alerts=print_alerts)
         self.alert_cooldown: Dict[Tuple[str, str], datetime] = {}
+        self.prune_interval = PRUNE_INTERVAL_PACKETS
+        self.packets_seen = 0
+
+    def prune(self, now: datetime) -> None:
+        """Bound memory by dropping state for sources that have gone quiet."""
+        self.state.prune(now)
+        expired = [
+            key
+            for key, last_alert in self.alert_cooldown.items()
+            if (now - last_alert).total_seconds() > self.window
+        ]
+        for key in expired:
+            del self.alert_cooldown[key]
 
     def can_alert(self, key: Tuple[str, str], now: datetime) -> bool:
         prev = self.alert_cooldown.get(key)
@@ -110,11 +171,15 @@ class DetectionEngine:
     def process_packet(self, packet, now: Optional[datetime] = None) -> None:  # noqa: ANN001
         event_time = now or utc_now()
 
+        self.packets_seen += 1
+        if self.packets_seen % self.prune_interval == 0:
+            self.prune(event_time)
+
         if packet.haslayer(IP) and packet.haslayer(TCP):
             src_ip = packet[IP].src
             dport = int(packet[TCP].dport)
-            tcp_flags = int(packet[TCP].flags)
-            if is_private_ip(src_ip) and tcp_flags == 0x02:
+            tcp_flags = int(packet[TCP].flags) & TCP_CONTROL_BITS
+            if is_private_ip(src_ip) and tcp_flags == TCP_SYN:
                 unique_ports = self.state.add_scan_event(src_ip, dport, event_time)
                 if len(unique_ports) >= self.scan_threshold and self.can_alert(
                     ("scan", src_ip), event_time
