@@ -36,6 +36,30 @@ SAMPLE_ALERTS = [
 ]
 
 
+TUNNEL_ALERT = {
+    "timestamp": "2026-07-18T12:00:03+00:00",
+    "type": "possible_dns_tunnel",
+    "details": {
+        "source_ip": "192.168.8.70",
+        "parent_domain": "exfil-demo.test",
+        "unique_subdomains_in_window": 20,
+        "queries_in_window": 20,
+        "unique_ratio": 1.0,
+        "window_seconds": 20,
+    },
+}
+
+
+def test_dns_tunnel_card_names_the_parent_domain() -> None:
+    page = build_report([TUNNEL_ALERT], ["pcap_alerts.json"])
+    assert "possible_dns_tunnel" in page
+    assert "192.168.8.70" in page
+    assert "exfil-demo.test" in page
+    # the "why it fired" evidence, in the card and again in the timeline
+    assert "20 unique subdomains of exfil-demo.test" in page
+    assert "<svg" in page
+
+
 def test_report_contains_sources_and_evidence() -> None:
     page = build_report(SAMPLE_ALERTS, ["pcap_alerts.json"])
     assert "pcap_alerts.json" in page

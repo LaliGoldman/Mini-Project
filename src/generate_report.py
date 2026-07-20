@@ -44,6 +44,7 @@ BAR_HEIGHT = 16
 METRIC_KEYS = {
     "possible_port_scan": "unique_ports_in_window",
     "dns_burst_anomaly": "requests_in_window",
+    "possible_dns_tunnel": "unique_subdomains_in_window",
 }
 
 
@@ -85,6 +86,15 @@ def render_card(alert: dict, scale: int) -> str:
             f"<p><strong>{esc(source_key(alert))}</strong> sent <strong>{value}</strong> "
             f"DNS requests within {esc(details.get('window_seconds', '?'))}s "
             "&mdash; at or above the burst threshold.</p>" + render_bar(value, scale)
+        )
+    elif alert_type == "possible_dns_tunnel":
+        value = metric_value(alert)
+        body = (
+            f"<p><strong>{esc(source_key(alert))}</strong> queried <strong>{value}</strong> "
+            f"distinct subdomains of <code>{esc(details.get('parent_domain', '?'))}</code> "
+            f"in {esc(details.get('window_seconds', '?'))}s, "
+            f"{esc(details.get('queries_in_window', '?'))} lookups with almost no repeats "
+            "&mdash; the shape of payload encoded into hostnames.</p>" + render_bar(value, scale)
         )
     elif alert_type == "possible_arp_spoofing":
         body = (
@@ -131,6 +141,12 @@ def evidence_summary(alert: dict) -> str:
     if alert_type == "dns_burst_anomaly":
         return (
             f"{details.get('requests_in_window', '?')} DNS requests "
+            f"in {details.get('window_seconds', '?')}s window"
+        )
+    if alert_type == "possible_dns_tunnel":
+        return (
+            f"{details.get('unique_subdomains_in_window', '?')} unique subdomains of "
+            f"{details.get('parent_domain', '?')} "
             f"in {details.get('window_seconds', '?')}s window"
         )
     if alert_type == "possible_arp_spoofing":
