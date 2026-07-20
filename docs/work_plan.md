@@ -113,3 +113,9 @@ evidence that triggered it** — not a generic metrics dashboard.
 - [x] Chronological alert timeline
 - [x] pytest: report generates from a fixture log; asserts key facts appear in HTML
 - [x] Wire into README run section; demo-able offline (open in browser / publish as Artifact)
+- [x] Harden against malformed logs: `details` None/non-dict, non-string `type`,
+      non-numeric metrics — render partial output, never crash — `tests/test_generate_report.py`
+- [x] Verified end-to-end by hand: demo pcap → `analyze_pcap` → `generate_report` →
+      committed `logs/report.html` byte-identical to regeneration; 37/37 tests green
+
+Phase 6 complete (2026-07-20); pushed to `origin/yuval`.
