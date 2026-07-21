@@ -68,7 +68,7 @@ false positives) and implements what we had listed only as future work ("unusual
 
 ### Setup
 ```bash
-cd network-anomaly-monitor
+cd Mini-Project
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -110,9 +110,11 @@ python -m pytest tests/
 ## 4. Experiments and Results
 
 ### Test environment
-- OS: macOS
-- Interface: `en0`
-- Live capture requires `sudo`
+- **Live captures** (`run_a`, `run_b`, `run_after_tuning`): macOS, interface `en0`, run with `sudo`
+  on a team member's machine — live sniffing needs root / `CAP_NET_RAW`
+- **Offline analysis, demo capture generation, and the test suite**: Linux, no root required
+- The offline path is the reproducible one: it advances the detection windows using each packet's
+  recorded capture time, so its results do not depend on the host or on how fast the file is read
 
 ### Comparison table
 
@@ -249,11 +251,11 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
 
 ## 9. Team Work Division (Trio)
 
-| Area | Content |
-|------|---------|
-| Live detection and tuning | `detector.py`, `detection.py`, threshold tuning |
-| Analysis and logs | `analyze_pcap.py`, `summarize_logs.py`, CSV |
-| Documentation and demo | Work plan, final report, test scenarios |
+| Area | Owner | Content |
+|------|-------|---------|
+| Live detection and tuning | | `detector.py`, `detection.py`, threshold tuning |
+| Analysis and logs | | `analyze_pcap.py`, `summarize_logs.py`, CSV export |
+| Documentation and demo | | Work plan, final report, demo capture, test scenarios |
 
 ---
 

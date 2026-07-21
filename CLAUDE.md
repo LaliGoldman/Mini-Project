@@ -92,8 +92,9 @@ behavior:
     bound. It is behaviour-neutral (the queue dicts are defaultdicts). **`arp_table` is exempt on
     purpose** — an expiring ARP table would let a spoofer wait out the window and claim an address
     unchallenged.
-  - `AlertLogger` accumulates alert dicts in memory and only writes on `flush()` — callers **must
-    call `engine.flush()`** at the end or the JSON file is never written.
+  - `AlertLogger` writes the alert file on **every** alert, so a capture killed outright still
+    leaves its alerts on disk. `flush()` remains and is idempotent — callers still call it in a
+    `finally` so an alert-free run produces an empty array rather than no file.
   - DNS is evaluated by **two orthogonal rules on the same packet**: `dns_burst_anomaly` (volume)
     and `possible_dns_tunnel` (shape — unique subdomains under one `parent_domain`, requiring a
     unique-to-total ratio ≥ `DNS_TUNNEL_MIN_UNIQUE_RATIO` so re-queried CDN hosts don't fire).
