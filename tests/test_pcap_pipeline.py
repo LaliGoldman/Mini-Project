@@ -6,23 +6,47 @@ from pathlib import Path
 import pytest
 
 import analyze_pcap
+import detection
 import generate_demo_pcap
 
 
-def test_capture_is_streamed_not_loaded_whole(
+def test_capture_is_read_lazily_not_materialised(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # rdpcap() materialises the entire capture in memory, which fails on a
-    # real multi-gigabyte file. Reading must go through PcapReader instead.
-    def explode(*args, **kwargs):
-        raise AssertionError("rdpcap() loads the whole capture into memory")
-
-    monkeypatch.setattr(analyze_pcap, "rdpcap", explode, raising=False)
-
+    # Streaming means a packet is processed before the next one is read. If the
+    # capture were materialised first (rdpcap, or list(PcapReader(...))), every
+    # read would happen before any processing, which this ordering catches.
     pcap = tmp_path / "demo_capture.pcap"
     generate_demo_pcap.main(out=pcap)
-    output = tmp_path / "alerts.json"
 
+    events: list[str] = []
+    real_reader = analyze_pcap.PcapReader
+    real_process = detection.DetectionEngine.process_packet
+
+    class SpyReader:
+        def __init__(self, path: str) -> None:
+            self._inner = real_reader(path)
+
+        def __enter__(self) -> "SpyReader":
+            self._inner.__enter__()
+            return self
+
+        def __exit__(self, *exc_info) -> object:
+            return self._inner.__exit__(*exc_info)
+
+        def __iter__(self):
+            for packet in self._inner:
+                events.append("read")
+                yield packet
+
+    def spy_process(self, packet, now=None):  # noqa: ANN001
+        events.append("process")
+        return real_process(self, packet, now=now)
+
+    monkeypatch.setattr(analyze_pcap, "PcapReader", SpyReader)
+    monkeypatch.setattr(detection.DetectionEngine, "process_packet", spy_process)
+
+    output = tmp_path / "alerts.json"
     analyze_pcap.run(
         pcap_path=pcap,
         output=output,
@@ -32,6 +56,8 @@ def test_capture_is_streamed_not_loaded_whole(
         window=20,
     )
 
+    assert events[:6] == ["read", "process", "read", "process", "read", "process"]
+    assert events.count("read") == events.count("process")
     assert len(json.loads(output.read_text(encoding="utf-8"))) == 5
 
 
