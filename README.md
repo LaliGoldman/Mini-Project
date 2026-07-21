@@ -24,7 +24,7 @@ both behave identically.
 ## Requirements
 
 - Python 3.12
-- [scapy](https://scapy.net/) — the only dependency
+- [scapy](https://scapy.net/) — the only runtime dependency (`pytest` is needed to run the tests)
 
 ```bash
 pip install -r requirements.txt

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -199,7 +200,12 @@ class AlertLogger:
             print(f"[ALERT] {ts} {alert_type} | {details}")
 
     def _write(self) -> None:
-        self.output_path.write_text(json.dumps(self.alerts, indent=2), encoding="utf-8")
+        # Write-then-rename: write_text truncates first, so a kill mid-write
+        # would leave exactly the corrupt file this class exists to prevent.
+        # os.replace is atomic on POSIX and Windows.
+        tmp_path = self.output_path.with_suffix(self.output_path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(self.alerts, indent=2), encoding="utf-8")
+        os.replace(tmp_path, self.output_path)
 
     def flush(self) -> None:
         """Write the alert file. Callers still invoke this so an alert-free run

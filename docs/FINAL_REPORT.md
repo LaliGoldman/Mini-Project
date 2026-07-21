@@ -138,7 +138,7 @@ python -m pytest tests/
 
 ### Automated verification
 
-Beyond the manual runs above, the repository includes a pytest suite (54 tests) that
+Beyond the manual runs above, the repository includes a pytest suite (58 tests) that
 verifies each detector in isolation — positive cases, negative cases (SYN-ACK packets,
 DNS responses, public-source traffic, gratuitous ARP, queries spread across distinct parent
 domains, re-queried CDN hostnames), sliding-window trimming, the per-source alert cooldown,
@@ -170,7 +170,7 @@ The following files are included with the submission:
 ### Strengths
 - Working product with measurable outputs (JSON/CSV/HTML)
 - Modular design: live + offline + summary + report, all sharing one detection engine
-- Automated pytest suite (54 tests), including an end-to-end reproducible demo pipeline
+- Automated pytest suite (58 tests), including an end-to-end reproducible demo pipeline
 - Clear academic discussion of sensitivity vs. false positives
 - Safe and legal – defensive tool in an authorized environment
 
@@ -187,7 +187,7 @@ The following files are included with the submission:
 - The tunnelling rule groups queries by the **last two labels** of the name rather than using a
   Public Suffix List, so names under a multi-part suffix (`a.example.co.uk`) collapse into a
   single bucket and unrelated sites can share it. Solving this properly requires bundling the PSL
-  as a data file, which we judged out of scope for a project with one dependency.
+  as a data file, which we judged out of scope for a project with one runtime dependency.
 - The unique-to-total ratio only speaks once there is evidence of re-querying. A **cold cache** —
   a first-contact burst of distinct hostnames under one shared content-delivery domain — has no
   repeats yet and can still read as a tunnel. The fanout threshold carries that case, since one

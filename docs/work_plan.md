@@ -152,6 +152,6 @@ and "unusual DNS by domain" sitting unimplemented in the future-work list.
 - [x] Report card + timeline evidence for the new type
 - [x] Limitations documented, not hidden: last-two-labels grouping instead of a Public Suffix
       List, and a cold cache defeating the ratio check
-- [x] Verified: 54/54 tests green; demo pipeline, HTML report and CSV exports regenerated
+- [x] Verified: 58/58 tests green; demo pipeline, HTML report and CSV exports regenerated
 
 Phase 7 complete (2026-07-20).

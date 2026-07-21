@@ -19,7 +19,8 @@ and `WORK_PLAN_HE.docx` (Hebrew, the copy submitted to the lecturer).
 
 ## Running
 
-Install deps with `pip install -r requirements.txt` (the only dependency is **scapy**).
+Install deps with `pip install -r requirements.txt` (the only runtime dependency is **scapy**;
+`pytest` is needed for the tests).
 Python 3.12. Scripts import `detection` as a top-level module, so **run them from inside `src/`**
 (or add `src/` to `PYTHONPATH`).
 
@@ -93,8 +94,10 @@ behavior:
     purpose** — an expiring ARP table would let a spoofer wait out the window and claim an address
     unchallenged.
   - `AlertLogger` writes the alert file on **every** alert, so a capture killed outright still
-    leaves its alerts on disk. `flush()` remains and is idempotent — callers still call it in a
-    `finally` so an alert-free run produces an empty array rather than no file.
+    leaves its alerts on disk. `flush()` remains and is idempotent — `detector.py` calls it in a
+    `finally` (live capture can be interrupted), `analyze_pcap.py` calls it bare at the end of the
+    run (a finite file, nothing to interrupt) — either way an alert-free run produces an empty
+    array rather than no file.
   - DNS is evaluated by **two orthogonal rules on the same packet**: `dns_burst_anomaly` (volume)
     and `possible_dns_tunnel` (shape — unique subdomains under one `parent_domain`, requiring a
     unique-to-total ratio ≥ `DNS_TUNNEL_MIN_UNIQUE_RATIO` so re-queried CDN hosts don't fire).
