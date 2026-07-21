@@ -253,9 +253,13 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
 
 | Area | Owner | Content |
 |------|-------|---------|
-| Live detection and tuning | | `detector.py`, `detection.py`, threshold tuning |
-| Analysis and logs | | `analyze_pcap.py`, `summarize_logs.py`, CSV export |
-| Documentation and demo | | Work plan, final report, demo capture, test scenarios |
+| Live detection and tuning | *(TO FILL)* | `detector.py`, `detection.py`, threshold tuning |
+| Analysis and logs | *(TO FILL)* | `analyze_pcap.py`, `summarize_logs.py`, CSV export |
+| Documentation and demo | *(TO FILL)* | Work plan, final report, demo capture, test scenarios |
+
+> **Before submission:** replace each *(TO FILL)* with the responsible team member
+> (Yuval Notkin, Shmuel Avivi, Ayala Goldman). The course grades each student on their own
+> contribution, so this table must not be submitted with the Owner column unassigned.
 
 ---
 
