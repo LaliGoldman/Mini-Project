@@ -9,6 +9,32 @@ import analyze_pcap
 import generate_demo_pcap
 
 
+def test_capture_is_streamed_not_loaded_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # rdpcap() materialises the entire capture in memory, which fails on a
+    # real multi-gigabyte file. Reading must go through PcapReader instead.
+    def explode(*args, **kwargs):
+        raise AssertionError("rdpcap() loads the whole capture into memory")
+
+    monkeypatch.setattr(analyze_pcap, "rdpcap", explode, raising=False)
+
+    pcap = tmp_path / "demo_capture.pcap"
+    generate_demo_pcap.main(out=pcap)
+    output = tmp_path / "alerts.json"
+
+    analyze_pcap.run(
+        pcap_path=pcap,
+        output=output,
+        scan_threshold=8,
+        dns_threshold=10,
+        fanout_threshold=15,
+        window=20,
+    )
+
+    assert len(json.loads(output.read_text(encoding="utf-8"))) == 5
+
+
 def test_demo_packets_have_pinned_ether_addresses() -> None:
     # Ether() without explicit src/dst is filled from the local machine at
     # serialization time, making the "deterministic" pcap machine-dependent.

@@ -242,6 +242,8 @@ Paradigm shift: an IDS does not have to be a heavy commercial product – a ligh
   probe rather than slipping past the filter
 - Added a fourth heuristic, `possible_dns_tunnel`, detecting unique-subdomain fanout under one
   parent domain — an orthogonal signal to the existing DNS volume rule
+- Switched offline analysis to a streaming capture reader, so a real capture larger than available
+  memory can be analysed rather than only small demo files
 - Rebuilt the demo capture's benign DNS traffic. The original 20 lookups were
   `host0..host19.example.com` — 20 unique subdomains of one parent with no repeats, which is
   precisely the tunnelling pattern. Our "legitimate" reference traffic was therefore shaped like an

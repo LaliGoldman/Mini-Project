@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scapy.all import rdpcap  # type: ignore
+from scapy.all import PcapReader  # type: ignore
 
 from detection import DetectionEngine, packet_timestamp
 
@@ -28,12 +28,14 @@ def run(
     )
 
     print(f"[*] Analyzing PCAP: {pcap_path}")
-    packets = rdpcap(str(pcap_path))
-    print(f"[*] Loaded {len(packets)} packets")
-
-    for packet in packets:
-        engine.process_packet(packet, now=packet_timestamp(packet))
-
+    # Streamed rather than rdpcap()'d: a real capture can be far larger than
+    # available memory, and the engine only ever needs one packet at a time.
+    packet_count = 0
+    with PcapReader(str(pcap_path)) as packets:
+        for packet in packets:
+            engine.process_packet(packet, now=packet_timestamp(packet))
+            packet_count += 1
+    print(f"[*] Processed {packet_count} packets")
     engine.flush()
     print(f"[*] Analysis complete. {len(engine.logger.alerts)} alerts written to {output}")
 

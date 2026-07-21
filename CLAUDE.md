@@ -107,7 +107,8 @@ behavior:
   `engine.process_packet` as the callback. Uses wall-clock (`utc_now`) for event time.
 
 - **[src/analyze_pcap.py](src/analyze_pcap.py)** — offline front-end. Replays a `.pcap`/`.pcapng`
-  through the same engine, but passes each packet's **own capture time** via
+  through the same engine — **streamed via `PcapReader`**, never `rdpcap()`, so a capture larger
+  than memory still works — but passes each packet's **own capture time** via
   `process_packet(packet, now=packet_timestamp(packet))`. This is the key difference from live
   mode: the sliding windows advance on the recorded timeline, not real time, so offline results
   are deterministic and independent of how fast the file is processed.
