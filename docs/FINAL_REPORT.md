@@ -195,11 +195,43 @@ The following files are included with the submission:
 
 ## 7. Social Engineering – Short Perspective
 
-Social engineering usually focuses on deceiving a user (email, extension, malicious link).  
-This project shows a complementary angle: even without a clear “bait,” a normal user **does not notice** traffic anomalies such as DNS bursts or ARP mapping changes.
+Social engineering is the first stage of an attack, not the whole of it. A phishing mail, a
+malicious browser extension, or a rogue “free Wi-Fi” access point only succeeds in getting code
+running or traffic redirected. Everything after that point has to cross the network — and that is
+where this tool looks.
 
-Conclusion: network-level monitoring matters because humans do not inspect the traffic layer in real time.  
-This supports the need for a simple monitoring tool, even in home/lab environments.
+We did not run an experiment on people; this section is an analysis of where our four detectors sit
+in a social-engineering attack chain.
+
+### Where each detector sits in the chain
+
+| Social-engineering entry point | What happens next on the network | Detector that would see it |
+|---|---|---|
+| Phishing attachment or malicious extension installs a backdoor | Beacons to a command-and-control server, often over DNS because port 53 is rarely blocked | `possible_dns_tunnel` — payload encoded into subdomain labels |
+| Same, at the data-theft stage | Files leave the network in DNS queries rather than an obvious upload | `possible_dns_tunnel` + `dns_burst_anomaly` together |
+| Victim joins a rogue access point or an attacker gains LAN access | ARP cache poisoning to place the attacker between victim and gateway | `possible_arp_spoofing` — an IP↔MAC mapping that changes |
+| Attacker gets a foothold on one machine and looks for others | Sweeps the local network for open services | `possible_port_scan` |
+
+### The asymmetry that matters
+
+Deception works because the target has no way to verify what they are told. The network layer has
+the opposite property: an ARP mapping either changed or it did not, and a host either queried 20
+unique subdomains of one domain or it did not. Those facts do not depend on the user's judgement,
+their mood, or how convincing the pretext was.
+
+This is why network monitoring complements user training rather than duplicating it. Training tries
+to reduce how often deception succeeds; monitoring assumes it sometimes will and catches the
+consequences. Our demo capture makes that concrete: a user who has been successfully phished has no
+way to notice that their machine is making DNS queries with payload in the hostnames, because
+nothing in their normal experience of using a computer surfaces that. The monitor notices in under
+twenty seconds.
+
+### The honest limit
+
+Detection is not prevention. Every alert this tool raises describes something that has *already*
+happened — the backdoor is already installed, the traffic is already redirected. What monitoring buys
+is time: the gap between compromise and discovery, which is the window an attacker relies on. It
+does nothing about the deception itself.
 
 ---
 
