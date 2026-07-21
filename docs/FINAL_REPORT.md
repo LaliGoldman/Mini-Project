@@ -196,7 +196,7 @@ The following files are included with the submission:
 ## 7. Social Engineering – Short Perspective
 
 Social engineering is the first stage of an attack, not the whole of it. A phishing mail, a
-malicious browser extension, or a rogue “free Wi-Fi” access point only succeeds in getting code
+malicious browser extension, or a rogue "free Wi-Fi" access point only succeeds in getting code
 running or traffic redirected. Everything after that point has to cross the network — and that is
 where this tool looks.
 
@@ -223,8 +223,7 @@ This is why network monitoring complements user training rather than duplicating
 to reduce how often deception succeeds; monitoring assumes it sometimes will and catches the
 consequences. Our demo capture makes that concrete: a user who has been successfully phished has no
 way to notice that their machine is making DNS queries with payload in the hostnames, because
-nothing in their normal experience of using a computer surfaces that. The monitor notices in under
-twenty seconds.
+nothing in their normal experience of using a computer surfaces that. In our demo capture the monitor flags it about three seconds after the first tunnelled query — though a slower attacker, pacing below the threshold, would evade the window entirely.
 
 ### The honest limit
 
