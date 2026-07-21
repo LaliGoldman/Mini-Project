@@ -190,11 +190,21 @@ class AlertLogger:
             "details": details,
         }
         self.alerts.append(payload)
+        # Persist immediately. A live capture that is killed outright never
+        # reaches its finally block, and buffering the whole session in memory
+        # would lose every alert. Alert volume is bounded by the per-source
+        # cooldown, so rewriting the array each time is cheap enough.
+        self._write()
         if self.print_alerts:
             print(f"[ALERT] {ts} {alert_type} | {details}")
 
-    def flush(self) -> None:
+    def _write(self) -> None:
         self.output_path.write_text(json.dumps(self.alerts, indent=2), encoding="utf-8")
+
+    def flush(self) -> None:
+        """Write the alert file. Callers still invoke this so an alert-free run
+        produces an empty array rather than no file at all."""
+        self._write()
 
 
 class DetectionEngine:

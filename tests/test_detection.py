@@ -409,3 +409,31 @@ def test_flush_writes_alert_schema(tmp_path: Path) -> None:
     # timestamp is that packet's event time, not the window start.
     assert alert["timestamp"] == (BASE_TIME + timedelta(milliseconds=400)).isoformat()
     assert alert["details"]["source_ip"] == "192.168.1.50"
+
+
+def test_alerts_are_persisted_without_an_explicit_flush(tmp_path: Path) -> None:
+    # A live capture killed outright (SIGKILL, lost session, power loss) never
+    # reaches the finally block, so alerts must already be on disk by then.
+    engine = make_engine(tmp_path)
+    feed_dns_burst(engine, "192.168.1.50", qr=0, count=5)
+
+    written = json.loads((tmp_path / "alerts.json").read_text(encoding="utf-8"))
+    assert [a["type"] for a in written] == ["dns_burst_anomaly"]
+    assert written[0]["details"]["source_ip"] == "192.168.1.50"
+
+
+def test_flush_is_idempotent_after_incremental_writes(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path)
+    feed_dns_burst(engine, "192.168.1.50", qr=0, count=5)
+    engine.flush()
+    engine.flush()
+
+    written = json.loads((tmp_path / "alerts.json").read_text(encoding="utf-8"))
+    assert len(written) == 1
+
+
+def test_empty_run_still_writes_a_valid_empty_array(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path)
+    engine.flush()
+
+    assert json.loads((tmp_path / "alerts.json").read_text(encoding="utf-8")) == []
